@@ -194,7 +194,8 @@ private:
     bool ParseAuthority(mdns_response_t& resp, Buffer& buf);
     bool ParseAddition(mdns_response_t& resp, Buffer& buf);
     bool ParseRR(Buffer& buf, std::vector<mdns_rr_t>& rrv);
-    bool ParseSrvRR();
+    bool ParseSrvRR(std::string host, mdns_rr_t& rr);
+    bool ParseSrv();
     bool ReadName(Buffer& buf, std::string& name);
     bool ReadLabelSeq(Buffer& buf, std::string& name, int offset);
     void WriteName(Buffer& buf, std::string& name);
@@ -413,29 +414,45 @@ void MDnsUtilImpl::WriteName(Buffer& buf, std::string& name)
     buf.WriteUint8(0);
 }
 
-bool MDnsUtilImpl::ParseSrvRR()
+bool MDnsUtilImpl::ParseSrvRR(std::string host, mdns_rr_t& rr)
+{
+    Buffer buf;
+    buf.SetBuffer((uint8_t*)rr.RDATA.c_str(), rr.RDATA.length());
+    
+    mdns_service_t srv;
+    srv.host = host;
+    srv.name = rr.NAME;
+    
+    buf.ReadUint16(); //priority
+    buf.ReadUint16(); //weight
+    
+    srv.port = buf.ReadUint16();
+
+    mServices.push_back(srv);
+    
+    return true;
+}
+
+bool MDnsUtilImpl::ParseSrv()
 {
     for (int i = 0; i < mResponses.size(); i++) {
         mdns_response_t& resp = mResponses[i];
+        
+        for (int j = 0; j < resp.answer.size(); j++) {
+            if (resp.answer[j].TYPE != 33)
+                continue;
+            
+            std::string host = inet_ntoa(resp.peer.sin_addr);
+            ParseSrvRR(host, resp.answer[j]);
+        }
         
         for (int j = 0; j < resp.addition.size(); j++) {
             if (resp.addition[j].TYPE != 33)
                 continue;
             
-            Buffer buf;
-            buf.SetBuffer((uint8_t*)resp.addition[j].RDATA.c_str(), resp.addition[j].RDATA.length());
-            
-            mdns_service_t srv;
-            srv.host = inet_ntoa(resp.peer.sin_addr);
-            srv.name = resp.addition[j].NAME;
-            
-            buf.ReadUint16(); //priority
-            buf.ReadUint16(); //weight
-            
-            srv.port = buf.ReadUint16();
-
-            mServices.push_back(srv);
-        }
+            std::string host = inet_ntoa(resp.peer.sin_addr);
+            ParseSrvRR(host, resp.addition[j]);
+        }        
     }
     
     return true;
@@ -515,7 +532,7 @@ bool MDnsUtilImpl::Resolve(std::string service, int scanTime)
         }
     }
     
-    if (!ParseSrvRR()) {
+    if (!ParseSrv()) {
         printf("service rr error\n");
         goto error;      
     }

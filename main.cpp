@@ -7,7 +7,7 @@ int main()
 {
     MDnsUtil util;
     
-    if(!util.Resolve("_http._tcp.local", 3))
+    if(!util.Resolve("_airplay._tcp.local", 1))
         return -1;
     
     std::vector<mdns_service_t> services = util.GetServices();
